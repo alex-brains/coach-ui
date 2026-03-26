@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getNextCard, markCorrect, markIncorrect, getTopics } from '../api/client'
-import type { CardResponse, SrsStage, TopicView } from '../types'
+import type { CardResponse, NextCardResponse, SrsStage, TopicView } from '../types'
 
 const STAGE_LABELS: Record<SrsStage, string> = {
     NEW:      'Новая',
@@ -30,10 +30,19 @@ export default function Study() {
     const [itemTypeFilter, setItemTypeFilter] = useState<ItemTypeFilter>('ALL')
     const [topicId, setTopicId] = useState<number | undefined>(undefined)
     const [topics, setTopics] = useState<TopicView[]>([])
+    const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
 
+    // Загружаем топики в зависимости от раздела
     useEffect(() => {
-        getTopics().then((data: TopicView[]) => setTopics(data))
-    }, [])
+        if (itemTypeFilter === 'ALL') {
+            setTopics([])
+            setTopicId(undefined)
+            return
+        }
+        const type = itemTypeFilter === 'QUESTION' ? 'GENERAL' : 'LANGUAGE'
+        getTopics(type).then((data: TopicView[]) => setTopics(data))
+        setTopicId(undefined)
+    }, [itemTypeFilter])
 
     const loadNext = useCallback(async () => {
         setLoading(true)
@@ -43,14 +52,14 @@ export default function Study() {
             if (itemTypeFilter !== 'ALL') params['itemType'] = itemTypeFilter
             if (topicId !== undefined) params['topicId'] = String(topicId)
 
-            const data: CardResponse & { dueCount: number } = await getNextCard(params)
+            const data: NextCardResponse = await getNextCard(params)
+
+            setDueCount(data.dueCount)
 
             if (!data.reviewId) {
                 setCard(null)
-                setDueCount(data.dueCount ?? 0)
             } else {
-                setCard(data)
-                setDueCount(data.dueCount)
+                setCard(data as CardResponse)
             }
         } finally {
             setLoading(false)
@@ -79,6 +88,15 @@ export default function Study() {
 
     return (
         <div className="study">
+
+            {/* Lightbox */}
+            {lightboxUrl && (
+                <div className="lightbox" onClick={() => setLightboxUrl(null)}>
+                    <div className="lightbox__close">✕</div>
+                    <img src={lightboxUrl} alt="preview" onClick={e => e.stopPropagation()} />
+                </div>
+            )}
+
             {/* Фильтры */}
             <div className="study__filters">
                 <div className="filter-tabs">
@@ -86,22 +104,26 @@ export default function Study() {
                         <button
                             key={t}
                             className={`filter-tab ${itemTypeFilter === t ? 'filter-tab--active' : ''}`}
-                            onClick={() => { setItemTypeFilter(t); setTopicId(undefined) }}
+                            onClick={() => setItemTypeFilter(t)}
                         >
                             {t === 'ALL' ? 'Все' : t === 'QUESTION' ? 'Программирование' : 'Языки'}
                         </button>
                     ))}
                 </div>
-                <select
-                    className="filter-select"
-                    value={topicId ?? ''}
-                    onChange={e => setTopicId(e.target.value ? Number(e.target.value) : undefined)}
-                >
-                    <option value="">— все топики —</option>
-                    {topics.map((t: TopicView) => (
-                        <option key={t.id} value={t.id}>{t.label}</option>
-                    ))}
-                </select>
+
+                {/* Топики только в Вопросах и Словах */}
+                {itemTypeFilter !== 'ALL' && topics.length > 0 && (
+                    <select
+                        className="filter-select"
+                        value={topicId ?? ''}
+                        onChange={e => setTopicId(e.target.value ? Number(e.target.value) : undefined)}
+                    >
+                        <option value="">— все топики —</option>
+                        {topics.map((t: TopicView) => (
+                            <option key={t.id} value={t.id}>{t.label}</option>
+                        ))}
+                    </select>
+                )}
             </div>
 
             {/* Прогресс-бар */}
@@ -135,12 +157,14 @@ export default function Study() {
 
             {!loading && card && (
                 <div className="study__card">
+
                     {card.itemType === 'QUESTION' && card.question && (
                         <>
                             {card.question.topicName && (
                                 <div className="study__topic">{card.question.topicName}</div>
                             )}
                             <div className="study__question">{card.question.questionText}</div>
+
                             {!showAnswer ? (
                                 <button className="btn btn--show" onClick={() => setShowAnswer(true)}>
                                     Показать ответ
@@ -150,7 +174,13 @@ export default function Study() {
                                     {card.media.length > 0 && (
                                         <div className="study__media">
                                             {card.media.map(m => (
-                                                <img key={m.id} src={`http://localhost:8080${m.url}`} alt={m.filename} />
+                                                <img
+                                                    key={m.id}
+                                                    src={`http://localhost:8080${m.url}`}
+                                                    alt={m.filename}
+                                                    className="study__media-img"
+                                                    onClick={() => setLightboxUrl(`http://localhost:8080${m.url}`)}
+                                                />
                                             ))}
                                         </div>
                                     )}
@@ -171,6 +201,7 @@ export default function Study() {
                                 <span className="badge">{card.item.type}</span>
                             </div>
                             <div className="study__word">{card.item.word}</div>
+
                             {!showAnswer ? (
                                 <button className="btn btn--show" onClick={() => setShowAnswer(true)}>
                                     Показать перевод

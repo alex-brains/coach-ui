@@ -32,6 +32,17 @@ export interface CardResponse {
     media: Array<{ id: number; url: string; filename: string }>
 }
 
+// Ответ от /api/v1/study/next — может не содержать карточку (dueCount=0)
+export interface NextCardResponse {
+    reviewId?: number
+    itemType?: 'QUESTION' | 'LANGUAGE_ITEM'
+    stage?: SrsStage
+    dueCount: number
+    question?: CardResponse['question']
+    item?: CardResponse['item']
+    media?: CardResponse['media']
+}
+
 export interface QuestionListItem {
     id: number
     question: string
